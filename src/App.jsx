@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { usePersisted } from './store'
+import rumBottle from './assets/rum_old16.jpg'
 
 const gbp = (n) => '£' + (Math.round(n * 100) / 100).toFixed(2)
 const sumBy = (list, pred) => list.filter(pred).reduce((a, e) => a + (+e.amount || 0), 0)
@@ -44,8 +45,12 @@ export default function App() {
 
   return (
     <main>
-      <h1>🥃 Old Monks Drinks Fund</h1>
-      <p className="mut">Managed separately from Souhrudam.</p>
+      <header className="hero">
+        <div>
+          <h1>🥃 Old Monks Drinks Fund</h1>
+        </div>
+        <img src={rumBottle} alt="Old Monk rum bottle" />
+      </header>
 
       <section className="card row">
         I am:

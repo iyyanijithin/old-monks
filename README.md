@@ -1,5 +1,7 @@
 # Old Monks Drinks Fund (React + Vite)
 
+[Open the Old Monks Drinks Fund](https://iyyanijithin.github.io/old-monks/)
+
 ```bash
 npm install
 npm run dev      # http://localhost:5173
