@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { usePersisted } from './store'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { usePersisted, useSharedMaintainer, useSharedState, useSharedUsers } from './store'
 import rumBottle from './assets/rum_old16.jpg'
 
 const gbp = (n) => '£' + (Math.round(n * 100) / 100).toFixed(2)
@@ -9,18 +9,31 @@ const describe = (e) =>
   ({
     contribution: `${e.who} paid ${gbp(e.amount)}`,
     topup: `${e.who} topped up ${gbp(e.amount)}`,
-    purchase: `${e.who} bought ${e.qty}× ${e.drink} for ${gbp(e.amount)}`,
-    pour: `${e.who} poured ${e.drink}`,
+    purchase: `${e.who} bought ${e.qty}× ${e.drink} (${e.qty * (e.pegsPerBottle ?? 25)} pegs) for ${gbp(e.amount)}`,
+    pour: `${e.who} poured 1 peg of ${e.drink}`,
     settle: `✔ Settled: ${e.note}`,
   })[e.type] ?? e.type
 
 export default function App() {
-  const [members, setMembers] = usePersisted('monks.members', [])
-  const [entries, setEntries] = usePersisted('monks.entries', [])
+  const { users: members, loading: membersLoading, error: membersError } = useSharedUsers()
+  const [entries, setEntries, entriesLoading, entriesError] = useSharedState('monks.entries', [])
+  const {
+    maintainer,
+    loading: maintainerLoading,
+    busy: maintainerBusy,
+    error: maintainerError,
+    claim: claimMaintenance,
+    release: releaseMaintenance,
+  } = useSharedMaintainer()
   const [me, setMe] = usePersisted('monks.me', '')
   const [topUp, setTopUp] = useState(10)
+  const dataLoading = membersLoading || entriesLoading || maintainerLoading
+  const dataError = membersError || entriesError || maintainerError
 
-  const add = (e) => setEntries((es) => [...es, { id: crypto.randomUUID(), ts: Date.now(), ...e }])
+  const add = (e) => {
+    const entry = { id: crypto.randomUUID(), ts: Date.now(), ...e }
+    setEntries((es) => [...es, entry])
+  }
   const remove = (id) => confirm('Remove this entry?') && setEntries((es) => es.filter((e) => e.id !== id))
   const needMe = () => (me ? true : (alert('Pick your name at the top first'), false))
 
@@ -30,7 +43,7 @@ export default function App() {
       sumBy(entries, (e) => e.type === 'purchase')
     const stock = {}
     entries.forEach((e) => {
-      if (e.type === 'purchase') stock[e.drink] = (stock[e.drink] || 0) + +e.qty
+      if (e.type === 'purchase') stock[e.drink] = (stock[e.drink] || 0) + +e.qty * (e.pegsPerBottle ?? 25)
       if (e.type === 'pour') stock[e.drink] = (stock[e.drink] || 0) - +e.qty
     })
     const sinceSettle = entries.slice(entries.map((e) => e.type).lastIndexOf('settle') + 1)
@@ -39,33 +52,60 @@ export default function App() {
     return { bal, stock, pours, spent: sumBy(sinceSettle, (e) => e.type === 'purchase') }
   }, [entries])
 
-  const now = new Date()
-  const accountant = members.length ? members[(now.getFullYear() * 12 + now.getMonth()) % members.length].name : null
   const low = bal < 10 && members.length > 0
 
   return (
     <main>
       <header className="hero">
         <div>
-          <h1>🥃 Old Monks Drinks Fund</h1>
+          <h1>Old Monks Drinks Fund</h1>
         </div>
         <img src={rumBottle} alt="Old Monk rum bottle" />
       </header>
 
+      {dataLoading && <section className="card">Connecting to the shared fund…</section>}
+      {dataError && <section className="card warn" role="alert">{dataError}</section>}
+
       <section className="card row">
         I am:
-        <select value={me} onChange={(e) => setMe(e.target.value)}>
+        <select value={members.some((member) => member.name === me) ? me : ''} onChange={(e) => setMe(e.target.value)}>
           <option value="">Pick name…</option>
           {members.map((m) => <option key={m.id}>{m.name}</option>)}
         </select>
       </section>
 
+      <section className="card row">
+        <div>
+          <h2>Fund maintenance</h2>
+          <div>
+            {maintainerLoading
+              ? 'Checking maintenance claim…'
+              : maintainer
+                ? `Maintained by ${maintainer}`
+                : 'No one is currently maintaining the fund.'}
+          </div>
+        </div>
+        {maintainer === me && me ? (
+          <button disabled={maintainerBusy} onClick={() => releaseMaintenance(me)}>
+            {maintainerBusy ? 'Releasing…' : 'Release maintenance'}
+          </button>
+        ) : (
+          <button
+            disabled={!me || maintainerBusy || maintainerLoading}
+            onClick={() => {
+              if (maintainer && !confirm(`Maintained by ${maintainer}. Do you want to take over maintenance?`)) return
+              claimMaintenance(me)
+            }}
+          >
+            {maintainerBusy ? 'Claiming…' : maintainer ? 'Take over maintenance' : 'Claim maintenance'}
+          </button>
+        )}
+        {!me && <span className="mut">Pick your name above to claim.</span>}
+      </section>
+
       <section className="card">
         <div className="mut">Fund balance</div>
         <div className={'big' + (bal < 10 ? ' warn-text' : '')}>{gbp(bal)}</div>
-        <div>
-          Accounts this month ({now.toLocaleString('en-GB', { month: 'long' })}): <b>{accountant ?? '(add Monks first)'}</b>
-        </div>
       </section>
 
       {low && (
@@ -77,36 +117,72 @@ export default function App() {
           </div>
           <textarea
             readOnly
-            value={`Old Monks fund is down to ${gbp(bal)} (below £10). Please send £${+topUp || 10} each to ${accountant}, who is handling the accounts this month. Thanks!`}
+            value={`Old Monks fund is down to ${gbp(bal)} (below £10). Please send £${+topUp || 10} each to ${maintainer || 'the fund maintainer'}, who is handling the accounts. Thanks!`}
           />
         </section>
       )}
 
       <Members
         members={members}
-        entries={entries}
-        onAddMonk={(name) => setMembers((ms) => [...ms, { id: crypto.randomUUID(), name }])}
+        payments={entries.filter((entry) => entry.type === 'contribution' || entry.type === 'topup')}
         onPay={(who, type, amount) => add({ type, who, amount })}
       />
 
       <section className="card">
         <h2>Stock</h2>
+        <Purchase
+          onBuy={(p) => {
+            if (!needMe()) return false
+            add({ type: 'purchase', who: me, ...p })
+            return true
+          }}
+        />
         {Object.keys(stock).length ? (
           <table>
             <tbody>
               {Object.entries(stock).map(([drink, left]) => (
                 <tr key={drink}>
                   <td>{drink}</td>
-                  <td><b>{left}</b> left</td>
-                  <td><button onClick={() => needMe() && add({ type: 'pour', drink, qty: 1, who: me })}>Pour 1</button></td>
+                  <td><b>{left}</b> pegs left</td>
+                  <td>
+                    <button
+                      disabled={left <= 0}
+                      title={left <= 0 ? 'No pegs left in stock' : `Pour one peg of ${drink}`}
+                      onClick={() => needMe() && add({ type: 'pour', drink, qty: 1, who: me })}
+                    >
+                      Pour 1 peg
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         ) : (
-          <p className="mut">No stock yet. Record a purchase below.</p>
+          <p className="mut">No stock yet. Add a purchase to get started.</p>
         )}
-        <Purchase onBuy={(p) => needMe() && add({ type: 'purchase', who: me, ...p })} />
+        <p className="mut">1 peg = 30 ml. Bottle purchases default to 25 pegs (750 ml); adjust the pegs per bottle when needed.</p>
+      </section>
+
+      <section className="card">
+        <h2>Stock history</h2>
+        {entries.some((entry) => entry.type === 'purchase') ? (
+          <table>
+            <thead><tr><th>Date</th><th>Drink</th><th>Bottles</th><th>Pegs added</th><th>Added by</th></tr></thead>
+            <tbody>
+              {[...entries].filter((entry) => entry.type === 'purchase').reverse().map((purchase) => (
+                <tr key={purchase.id}>
+                  <td>{new Date(purchase.ts).toLocaleDateString('en-GB')}</td>
+                  <td>{purchase.drink}</td>
+                  <td>{purchase.qty}</td>
+                  <td>{purchase.qty * (purchase.pegsPerBottle ?? 25)}</td>
+                  <td>{purchase.who}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="mut">No bottles purchased yet.</p>
+        )}
       </section>
 
       <section className="card">
@@ -135,45 +211,36 @@ export default function App() {
   )
 }
 
-function Members({ members, entries, onAddMonk, onPay }) {
-  const [name, setName] = useState('')
+function Members({ members, payments, onPay }) {
   const [who, setWho] = useState('')
   const [type, setType] = useState('contribution')
   const [amount, setAmount] = useState(30)
 
   return (
     <section className="card">
-      <h2>Monks and contributions</h2>
-      {members.length ? (
+      <h2>Contributions</h2>
+      {payments.length ? (
         <table>
-          <thead><tr><th>Monk</th><th>£30 paid</th><th>Top-ups</th></tr></thead>
+          <thead><tr><th>Name</th><th>Amount</th><th>Date</th></tr></thead>
           <tbody>
-            {members.map((m) => {
-              const paid = sumBy(entries, (e) => e.type === 'contribution' && e.who === m.name)
-              const tops = sumBy(entries, (e) => e.type === 'topup' && e.who === m.name)
-              return (
-                <tr key={m.id}>
-                  <td>{m.name}</td>
-                  <td>{paid >= 30 ? '✅ ' + gbp(paid) : 'owes ' + gbp(30 - paid)}</td>
-                  <td>{gbp(tops)}</td>
-                </tr>
-              )
-            })}
+            {[...payments].reverse().map((payment) => (
+              <tr key={payment.id}>
+                <td>{payment.who}</td>
+                <td>{gbp(payment.amount)}</td>
+                <td>{new Date(payment.ts).toLocaleDateString('en-GB')}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       ) : (
-        <p className="mut">No Monks yet.</p>
+        <p className="mut">No contributions recorded yet.</p>
       )}
-      <div className="row">
-        <input placeholder="New Monk name" value={name} onChange={(e) => setName(e.target.value)} />
-        <button onClick={() => name.trim() && (onAddMonk(name.trim()), setName(''))}>Add Monk</button>
-      </div>
       <div className="row">
         <select value={who || members[0]?.name || ''} onChange={(e) => setWho(e.target.value)}>
           {members.map((m) => <option key={m.id}>{m.name}</option>)}
         </select>
         <select value={type} onChange={(e) => setType(e.target.value)}>
-          <option value="contribution">£30 contribution</option>
+          <option value="contribution">Contribution</option>
           <option value="topup">Top-up</option>
         </select>
         £<input type="number" min="0" step="0.5" value={amount} onChange={(e) => setAmount(e.target.value)} />
@@ -191,26 +258,69 @@ function Members({ members, entries, onAddMonk, onPay }) {
 }
 
 function Purchase({ onBuy }) {
+  const [open, setOpen] = useState(false)
   const [drink, setDrink] = useState('')
   const [qty, setQty] = useState(1)
+  const [pegsPerBottle, setPegsPerBottle] = useState(25)
   const [cost, setCost] = useState('')
+  const dialogRef = useRef(null)
+
+  useEffect(() => {
+    const dialog = dialogRef.current
+    if (!dialog) return
+    if (open && !dialog.open) dialog.showModal()
+    if (!open && dialog.open) dialog.close()
+  }, [open])
 
   return (
-    <div className="row">
-      <input placeholder="Drink" value={drink} onChange={(e) => setDrink(e.target.value)} />
-      Qty <input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} />
-      Cost £<input type="number" min="0" step="0.5" value={cost} onChange={(e) => setCost(e.target.value)} />
-      <button
-        onClick={() => {
-          if (!drink.trim() || !(+qty > 0)) return
-          onBuy({ drink: drink.trim(), qty: +qty, amount: +cost || 0 })
-          setDrink('')
-          setCost('')
+    <>
+      <button className="add-stock-button" onClick={() => setOpen(true)}>Add to stock</button>
+      <dialog
+        ref={dialogRef}
+        className="purchase-dialog"
+        aria-labelledby="purchase-title"
+        onClick={(event) => {
+          if (event.target === dialogRef.current) setOpen(false)
         }}
+        onClose={() => setOpen(false)}
       >
-        Record purchase
-      </button>
-    </div>
+        <form
+          className="purchase-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (!drink.trim() || !Number.isInteger(+qty) || +qty < 1 || !Number.isInteger(+pegsPerBottle) || +pegsPerBottle < 1) return
+            if (!onBuy({ drink: drink.trim(), qty: +qty, pegsPerBottle: +pegsPerBottle, amount: +cost || 0 })) return
+            setDrink('')
+            setQty(1)
+            setPegsPerBottle(25)
+            setCost('')
+            setOpen(false)
+          }}
+        >
+          <h2 id="purchase-title">Add to stock</h2>
+          <label>
+            Drink
+            <input autoFocus required value={drink} onChange={(event) => setDrink(event.target.value)} />
+          </label>
+          <label>
+            Bottles
+            <input aria-label="Number of bottles" type="number" min="1" step="1" required value={qty} onChange={(event) => setQty(event.target.value)} />
+          </label>
+          <label>
+            Pegs per bottle
+            <input aria-label="Pegs per bottle" type="number" min="1" step="1" required value={pegsPerBottle} onChange={(event) => setPegsPerBottle(event.target.value)} />
+          </label>
+          <label>
+            Cost (£)
+            <input type="number" min="0" step="0.5" value={cost} onChange={(event) => setCost(event.target.value)} />
+          </label>
+          <div className="dialog-actions">
+            <button type="button" className="secondary-button" onClick={() => setOpen(false)}>Cancel</button>
+            <button type="submit">Add to stock</button>
+          </div>
+        </form>
+      </dialog>
+    </>
   )
 }
 

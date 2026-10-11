@@ -40,6 +40,23 @@ input, select, textarea, button { font: inherit; color: var(--fg); background: v
 input[type='number'] { width: 90px; }
 button { cursor: pointer; background: var(--acc); color: #fff; border: 0; }
 button.x { background: none; color: var(--mut); padding: 0 6px; }
+.add-stock-button { margin: 0 0 10px; }
+.purchase-dialog {
+  width: min(420px, calc(100vw - 56px));
+  max-height: calc(100dvh - 48px);
+  padding: 20px;
+  color: var(--fg);
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+}
+.purchase-dialog::backdrop { background: rgba(0, 0, 0, .58); }
+.purchase-form { display: grid; gap: 12px; }
+.purchase-form h2 { margin: 0; }
+.purchase-form label { display: grid; gap: 4px; }
+.purchase-form input { width: 100%; box-sizing: border-box; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.secondary-button { color: var(--fg); background: var(--bg); border: 1px solid var(--bd); }
 textarea { width: 100%; min-height: 64px; box-sizing: border-box; }
 table { border-collapse: collapse; width: 100%; }
 td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--bd); }
