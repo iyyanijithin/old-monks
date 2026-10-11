@@ -1,0 +1,23 @@
+:root {
+  --bg: #faf8f4; --fg: #222; --card: #fff; --mut: #777; --acc: #8a5a14; --warn: #b3261e; --bd: #e4ddd0;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #191714; --fg: #eee; --card: #25221d; --mut: #a39a8a; --acc: #e0a954; --warn: #ff8a80; --bd: #3a352c; }
+}
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+main { max-width: 720px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 22px; margin: 0 0 2px; }
+h2 { font-size: 16px; margin: 0 0 8px; color: var(--acc); }
+.card { background: var(--card); border: 1px solid var(--bd); border-radius: 10px; padding: 12px; margin-bottom: 12px; overflow-x: auto; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+input, select, textarea, button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--bd); border-radius: 6px; padding: 6px 8px; max-width: 100%; }
+input[type='number'] { width: 90px; }
+button { cursor: pointer; background: var(--acc); color: #fff; border: 0; }
+button.x { background: none; color: var(--mut); padding: 0 6px; }
+textarea { width: 100%; min-height: 64px; box-sizing: border-box; }
+table { border-collapse: collapse; width: 100%; }
+td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--bd); }
+.big { font-size: 30px; font-weight: 700; }
+.warn { border-color: var(--warn); }
+.warn h2, .warn-text { color: var(--warn); }
+.mut { color: var(--mut); }
